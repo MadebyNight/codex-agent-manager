@@ -16,6 +16,7 @@ from app.config import ConfigError, Home, default_homes
 from app.connectivity import connection, probe
 from app.manager import Manager, atomic_write
 from app.server import make_server
+from app.settings import Settings
 
 
 class Fixture:
@@ -67,9 +68,13 @@ class ManagerTests(unittest.TestCase):
         return tomlkit.parse((self.f.homes[scope] / 'agents' / f'{name}.toml').read_text('utf-8'))
 
     def test_native_home_ignores_orca_codex_home(self):
-        with patch.dict(os.environ, {'CODEX_HOME':'C:/wrong', 'ORCA_CODEX_HOME':str(self.f.homes['orca'])}):
+        with patch.dict(os.environ, {'CODEX_HOME':str(self.f.homes['orca']), 'ORCA_CODEX_HOME':str(self.f.homes['orca'])}):
             self.assertEqual(default_homes()['native'], (Path.home()/'.codex').resolve())
             self.assertEqual(default_homes()['orca'], self.f.homes['orca'])
+
+    def test_custom_native_codex_home_is_detected(self):
+        with patch.dict(os.environ, {'CODEX_HOME':str(self.f.homes['native']), 'ORCA_CODEX_HOME':str(self.f.homes['orca'])}):
+            self.assertEqual(default_homes()['native'],self.f.homes['native'])
 
     def test_builtin_and_custom_classification_and_no_secrets(self):
         state = self.m.state()
@@ -293,6 +298,62 @@ class ManagerTests(unittest.TestCase):
         preview=self.m.preview(self.f.request());self.m.test(preview['id'])
         self.m.plans[preview['id']]['proofs']['native']['time']-=601
         with self.assertRaisesRegex(ConfigError,'10 分钟'):self.m.apply(preview['id'],True)
+
+
+class SettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.f=Fixture(self.temp.name)
+        self.file=Path(self.temp.name)/'local/settings.json'
+        self.settings=Settings(self.file,self.f.homes)
+
+    def body(self):
+        return {'homes':{k:{'path':str(p),'enabled':True} for k,p in self.f.homes.items()}}
+
+    def test_detect_save_and_load_on_next_start(self):
+        self.assertFalse(self.settings.state()['configured'])
+        self.assertTrue(self.settings.check(self.body())['valid'])
+        self.settings.save(self.f.manager,self.body())
+        different={k:Path(self.temp.name)/('unused-'+k) for k in self.f.homes}
+        loaded=Settings(self.file,different)
+        self.assertTrue(loaded.configured)
+        self.assertEqual(loaded.homes,self.f.homes)
+        self.assertEqual(len(loaded.manager().state()['homes']['native']['roles']),4)
+
+    def test_missing_orca_can_be_disabled(self):
+        body=self.body();body['homes']['orca']['path']=str(Path(self.temp.name)/'not-installed')
+        self.assertFalse(self.settings.check(body)['valid'])
+        with self.assertRaises(ConfigError):self.settings.save(self.f.manager,body)
+        body['homes']['orca']['enabled']=False
+        self.settings.save(self.f.manager,body)
+        self.assertFalse(self.f.manager.state()['homes']['orca']['enabled'])
+        self.f.apply(self.f.request())
+        with self.assertRaises(ConfigError):self.f.manager.preview(self.f.request(scope='both'))
+
+    def test_invalid_selection_does_not_persist_or_change_codex(self):
+        before={k:(p/'config.toml').read_bytes() for k,p in self.f.homes.items()}
+        for path in ['relative/path',str(self.f.homes['native']),str(self.f.homes['native']/'nested')]:
+            body=self.body();body['homes']['orca']['path']=path
+            with self.assertRaises(ConfigError):self.settings.save(self.f.manager,body)
+        self.assertFalse(self.file.exists())
+        for k,p in self.f.homes.items():self.assertEqual((p/'config.toml').read_bytes(),before[k])
+
+    def test_switch_clears_plans_and_hides_old_backup_history(self):
+        self.f.apply(self.f.request())
+        plan=self.f.manager.preview(self.f.request(patch={'model':'gpt-next'}))
+        other=Fixture(Path(self.temp.name)/'other-user')
+        body={'homes':{k:{'path':str(p),'enabled':True} for k,p in other.homes.items()}}
+        self.settings.save(self.f.manager,body)
+        self.assertFalse(self.f.manager.backups())
+        with self.assertRaises(ConfigError):self.f.manager.apply(plan['id'],True)
+        self.settings.save(self.f.manager,self.body())
+        self.assertEqual(len(self.f.manager.backups()),1)
+
+    def test_corrupt_settings_returns_to_first_run(self):
+        self.file.parent.mkdir();self.file.write_text('{bad json',encoding='utf-8')
+        settings=Settings(self.file,self.f.homes)
+        self.assertFalse(settings.configured);self.assertTrue(settings.error)
+        self.assertEqual(settings.homes,self.f.homes)
 
 
 class ProbeTests(unittest.TestCase):

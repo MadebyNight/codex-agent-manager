@@ -63,11 +63,17 @@ def encode(doc, original=None):
 
 
 def default_homes():
-    # Deliberately do not use CODEX_HOME for the native home: Orca sets it.
     native = Path.home() / '.codex'
     orca = Path(os.environ.get('ORCA_CODEX_HOME') or
                 str(Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming')) /
                     'orca/codex-runtime-home/home'))
+    candidate = os.environ.get('CODEX_HOME')
+    if candidate:
+        candidate = Path(candidate).expanduser().resolve()
+        # Orca injects CODEX_HOME into its terminals. Do not mistake it for native Codex.
+        is_orca = candidate == orca.resolve() or 'codex-runtime-home' in candidate.parts or 'codex-accounts' in candidate.parts
+        if not is_orca:
+            native = candidate
     return {'native': native.resolve(), 'orca': orca.resolve()}
 
 

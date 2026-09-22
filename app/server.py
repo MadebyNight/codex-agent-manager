@@ -1,20 +1,19 @@
 import argparse
 import json
 import mimetypes
-import os
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .config import ConfigError, default_homes
-from .manager import Manager
+from .config import ConfigError
+from .settings import Settings, choose_directory
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def make_server(manager, port=8765):
+def make_server(manager, port=8765, settings=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -38,6 +37,8 @@ def make_server(manager, port=8765):
                 return self.reply(200, manager.state())
             if path == '/api/health':
                 return self.reply(200, {'app': 'codex-agent-manager'})
+            if path == '/api/settings':
+                return self.reply(200, settings.state() if settings else {'configured': True, 'homes': {}})
             target = ROOT / 'web' / ('index.html' if path == '/' else path.lstrip('/'))
             if not target.resolve().is_relative_to((ROOT / 'web').resolve()) or not target.is_file():
                 return self.reply(404, {'error': '页面不存在'})
@@ -57,7 +58,18 @@ def make_server(manager, port=8765):
                     raise ConfigError('请求大小无效')
                 body = json.loads(self.rfile.read(length))
                 route = urlsplit(self.path).path
-                if route == '/api/preview':
+                if route.startswith('/api/settings/'):
+                    if settings is None:
+                        raise ConfigError('此服务未启用目录设置')
+                    if route == '/api/settings/check':
+                        result = settings.check(body)
+                    elif route == '/api/settings/save':
+                        result = settings.save(manager, body)
+                    elif route == '/api/settings/browse':
+                        result = {'path': choose_directory(str(body.get('path', '')))}
+                    else:
+                        raise ConfigError('目录设置接口不存在')
+                elif route == '/api/preview':
                     result = manager.preview(body)
                 elif route == '/api/test':
                     result = manager.test(body['id'])
@@ -82,8 +94,9 @@ def main():
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--open', action='store_true')
     args = parser.parse_args()
-    manager = Manager(default_homes(), ROOT / '.local/backups')
-    server = make_server(manager, args.port)
+    settings = Settings(ROOT / '.local/settings.json')
+    manager = settings.manager()
+    server = make_server(manager, args.port, settings)
     url = f'http://127.0.0.1:{server.server_port}'
     print(f'Codex Agent Manager: {url}', flush=True)
     if args.open:

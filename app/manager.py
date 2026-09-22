@@ -41,9 +41,10 @@ def unpack(data):
 
 
 class Manager:
-    def __init__(self, homes, storage, tester=probe, writer=atomic_write):
+    def __init__(self, homes, storage, tester=probe, writer=atomic_write, enabled=None):
         self.homes = {key: Path(value).resolve() for key, value in homes.items()}
         self.storage = Path(storage)
+        self.enabled = set(homes) if enabled is None else set(enabled)
         self.tester, self.writer = tester, writer
         self.lock = threading.RLock()
         self.plans = {}
@@ -52,8 +53,10 @@ class Manager:
 
     def targets(self, scope):
         if scope == 'both':
+            if self.enabled != set(self.homes):
+                raise ConfigError('请先在目录设置中启用两套配置')
             return list(self.homes)
-        if scope in self.homes:
+        if scope in self.homes and scope in self.enabled:
             return [scope]
         raise ConfigError('请选择原生 Codex、Orca 或同时修改两套')
 
@@ -65,7 +68,7 @@ class Manager:
         for p in sorted(self.storage.glob('*.json'), reverse=True):
             try:
                 item = json.loads(p.read_text('utf-8'))
-                if item['status'] == 'applied':
+                if item['status'] == 'applied' and self.matches_homes(item):
                     result.append({'id': p.stem, 'time': item['time'], 'name': item['name'],
                                    'operation': item['operation'], 'scope': item['scope'],
                                    'files': [c['path'] for c in item['changes']]})
@@ -77,25 +80,43 @@ class Manager:
         with self.lock:
             result = {'homes': {}, 'backups': self.backups(), 'errors': self.recovery_errors}
             for key, path in self.homes.items():
+                if key not in self.enabled:
+                    result['homes'][key] = {'path': str(path), 'roles': [], 'errors': [], 'revision': None, 'enabled': False}
+                    continue
                 try:
                     home = self.load(key)
                     result['homes'][key] = {'path': str(path), 'roles': [home.public_role(r) for r in home.roles.values()],
-                                            'errors': home.errors, 'revision': home.fingerprint()}
-                except ConfigError as exc:
-                    result['homes'][key] = {'path': str(path), 'roles': [], 'errors': [str(exc)], 'revision': None}
+                                            'errors': home.errors, 'revision': home.fingerprint(), 'enabled': True}
+                except (ConfigError, OSError) as exc:
+                    result['homes'][key] = {'path': str(path), 'roles': [], 'errors': [str(exc) if isinstance(exc, ConfigError) else '目录无法读取，请检查路径和权限'], 'revision': None, 'enabled': True}
             models = {r['effective_model'] for h in result['homes'].values() for r in h['roles'] if r['effective_model']}
             result['models'] = sorted(models)
             result['efforts'] = list(EFFORTS)
             return result
 
+    def matches_homes(self, item):
+        if 'homes' in item:
+            return all(key in self.enabled and Path(value).resolve() == self.homes.get(key)
+                       for key, value in item['homes'].items())
+        return all(c['home'] in self.enabled and Path(c['path']).resolve().is_relative_to(self.homes[c['home']])
+                   for c in item['changes'])
+
+    def change_homes(self, homes, enabled):
+        # Caller holds the manager lock and has validated/persisted these settings.
+        self.homes = homes
+        self.enabled = set(enabled)
+        self.plans.clear()
+        self.recovery_errors.clear()
+        self.recover()
+
     def check_homes(self, keys):
         homes = {key: self.load(key) for key in keys}
         if self.recovery_errors:
             raise ConfigError('存在未恢复的事务，请先查看 .local/backups 中的事务记录')
-        if len(set(self.homes.values())) != len(self.homes):
+        if len(self.enabled) == 2 and len(set(self.homes.values())) != len(self.homes):
             raise ConfigError('两套配置指向同一目录，无法独立修改')
         native_agents, orca_agents = [p / 'agents' for p in self.homes.values()]
-        if native_agents.resolve() == orca_agents.resolve():
+        if len(self.enabled) == 2 and native_agents.resolve() == orca_agents.resolve():
             raise ConfigError('两套 agents 目录共享链接，无法保证修改范围')
         for home in homes.values():
             if home.errors:
@@ -286,6 +307,7 @@ class Manager:
         backup_id = time.strftime('%Y%m%d-%H%M%S') + f'-{time.time_ns():020d}-' + uuid.uuid4().hex[:8]
         path = self.storage / (backup_id + '.json')
         item = {'status': 'pending', 'time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                'homes': {key: str(self.homes[key]) for key in self.targets(plan['scope'])},
                 'name': plan['name'], 'scope': plan['scope'], 'operation': plan['operation'],
                 'changes': [{**c, 'path': str(c['path']), 'before': pack(c['before']),
                              'after': pack(c['after'])} for c in plan['changes']]}
@@ -336,7 +358,7 @@ class Manager:
         for path in sorted(self.storage.glob('*.json')):
             try:
                 item = json.loads(path.read_text('utf-8'))
-                if item['status'] != 'pending':
+                if item['status'] != 'pending' or not self.matches_homes(item):
                     continue
                 for c in item['changes']:
                     target = Path(c['path'])
