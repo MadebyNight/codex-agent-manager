@@ -1,16 +1,21 @@
 import argparse
 import json
 import mimetypes
+import sys
 import threading
+import urllib.request
+import urllib.error
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from .config import ConfigError
+from . import __version__
 from .settings import Settings, choose_directory
 
 ROOT = Path(__file__).resolve().parent.parent
+DATA_ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else ROOT
 
 
 def make_server(manager, port=8765, settings=None):
@@ -36,7 +41,7 @@ def make_server(manager, port=8765, settings=None):
             if path == '/api/state':
                 return self.reply(200, manager.state())
             if path == '/api/health':
-                return self.reply(200, {'app': 'codex-agent-manager'})
+                return self.reply(200, {'app': 'codex-agent-manager', 'version': __version__})
             if path == '/api/settings':
                 return self.reply(200, settings.state() if settings else {'configured': True, 'homes': {}})
             target = ROOT / 'web' / ('index.html' if path == '/' else path.lstrip('/'))
@@ -58,7 +63,11 @@ def make_server(manager, port=8765, settings=None):
                     raise ConfigError('请求大小无效')
                 body = json.loads(self.rfile.read(length))
                 route = urlsplit(self.path).path
-                if route.startswith('/api/settings/'):
+                if route == '/api/shutdown':
+                    self.reply(200, {'ok': True})
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                    return
+                elif route.startswith('/api/settings/'):
                     if settings is None:
                         raise ConfigError('此服务未启用目录设置')
                     if route == '/api/settings/check':
@@ -93,13 +102,33 @@ def main():
     parser = argparse.ArgumentParser(description='Codex Agent Manager — local configuration UI')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--open', action='store_true')
+    parser.add_argument('--no-open', action='store_true', help='Do not open the browser')
+    parser.add_argument('--stop', action='store_true', help='Stop the local panel on the selected port')
+    parser.add_argument('--version', action='version', version=__version__)
     args = parser.parse_args()
-    settings = Settings(ROOT / '.local/settings.json')
+    url = f'http://127.0.0.1:{args.port}'
+    existing = None
+    try:
+        with urllib.request.urlopen(url + '/api/health', timeout=1) as response:
+            existing = json.load(response)
+    except (OSError, ValueError):
+        pass
+    if existing and existing.get('app') == 'codex-agent-manager':
+        if args.stop:
+            request = urllib.request.Request(url + '/api/shutdown', data=b'{}', headers={'Content-Type':'application/json'})
+            with urllib.request.urlopen(request, timeout=3):
+                pass
+        elif not args.no_open:
+            webbrowser.open(url)
+        return
+    if args.stop:
+        return
+    settings = Settings(DATA_ROOT / '.local/settings.json')
     manager = settings.manager()
     server = make_server(manager, args.port, settings)
     url = f'http://127.0.0.1:{server.server_port}'
     print(f'Codex Agent Manager: {url}', flush=True)
-    if args.open:
+    if (args.open or getattr(sys, 'frozen', False)) and not args.no_open:
         threading.Timer(.3, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()

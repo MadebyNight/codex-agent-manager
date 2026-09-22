@@ -1,8 +1,42 @@
 # Codex Agent Manager
 
-本机 Web 面板，用于管理原生 Codex 与 Orca 托管 Codex 的子代理配置。
+用一个本地 Web 面板管理 **原生 Codex / Orca 托管 Codex** 的子代理。点击选择模型、编辑角色、验证连接，无需为修改配置再启动一个 Agent 会话。
 
-## 启动
+[下载 Windows 便携版](https://github.com/MadebyNight/codex-agent-manager/releases/latest) · [版本记录](https://github.com/MadebyNight/codex-agent-manager/releases) · [反馈问题](https://github.com/MadebyNight/codex-agent-manager/issues)
+
+![Codex Agent Manager 界面](docs/preview-desktop.png)
+
+## 下载即用（Windows x64）
+
+1. 打开 [Releases](https://github.com/MadebyNight/codex-agent-manager/releases/latest)，下载 **`codex-agent-manager-v0.1.0-windows-x64.zip`**，不要下载 GitHub 自动生成的 Source code 包。
+2. **完整解压**到可写目录，保留 `_internal` 文件夹，双击 **`CodexAgentManager.exe`**。
+3. 浏览器自动打开 `http://127.0.0.1:8765`。确认 Codex 配置目录，未安装的一套取消启用，然后点击“保存并使用”。
+4. 点击角色 → 选择或输入模型 → 预览变更 → 测试连通性 → 确认保存。
+
+**便携版内置运行环境，无需安装 Python、Node.js 或依赖；启动面板不需要联网。** 模型测试需要连接你的服务商，并产生少量 API 用量。请先在本机安装并配置 Codex，使用 Orca 的用户还需已有 Orca Codex 配置。
+
+关闭浏览器不会退出后台。双击 **停止面板.cmd** 可退出，再次双击 EXE 会打开已有面板。设置与备份位于解压目录的 `.local`；更新前停止旧版，保留该目录，再替换程序文件。
+
+| 支持范围 | 说明 |
+|---|---|
+| 发布平台 | Windows 10/11 x64；不需要管理员权限 |
+| 配置范围 | 原生 / Orca / 两套同时修改；也可仅启用一种 |
+| 自定义模型 | 不限厂商或名称，手动输入模型 ID，实际连接测试通过后保存 |
+| 官方角色 | `default`、`worker`、`explorer`，本工具限定为 GPT 系列 |
+| 服务商 | 已有 API Key 认证的 Responses 兼容服务；不管理 OAuth 登录 |
+| 配置兼容 | 按 Codex 0.155.1 核查；其他版本请先确认角色配置格式 |
+
+### 主要功能
+
+- 点击即展开模型列表，支持搜索、键盘选择与任意模型 ID。
+- 新增、编辑、删除自定义角色；为官方角色设置覆盖或恢复默认。
+- 自动识别配置目录，支持本机文件夹选择并记住设置。
+- 双套配置显示差异，只同步本次编辑字段，保留其他内容和 TOML 注释。
+- 保存前展示变更，自动备份；写入失败回滚，支持恢复最近一次操作。
+
+这是独立社区工具，与 OpenAI、Orca 无隶属或官方背书关系。
+
+## 从源码启动（开发者）
 
 Windows 安装 Python 3.11+ 后，双击 **启动面板.cmd**。首次启动在项目 `.venv` 安装唯一运行依赖 `tomlkit`，之后离线启动，无需 Agent 会话。
 
@@ -18,7 +52,7 @@ Windows 安装 Python 3.11+ 后，双击 **启动面板.cmd**。首次启动在�
 
 选择保存在项目 `.local/settings.json`，下次启动优先使用。面板右上方“目录设置”可随时调整，也可恢复到本次启动自动检测到的路径。切换目录立即生效，并清除旧预览与测试凭据；操作记录按当前目录过滤，原备份文件保留。
 
-分发给同事时复制源码与启动脚本，**排除 `.venv`、`.local` 和 `.git`**。同事需先安装 Python 3.11+ 并确保 `python` 命令可用，首次启动联网创建自己的虚拟环境。不要分发你的目录设置、日志、认证或配置备份。
+向同事分发时，推荐直接发送 Release ZIP。若分发源码，**排除 `.venv`、`.local` 和 `.git`**；源码运行需要 Python 3.11+。不要分发个人目录设置、日志、认证或配置备份。
 
 当前面向 Windows 本机配置，不自动遍历 Orca 多账号目录，不扫描 WSL 或项目级 `.codex/agents`。特殊目录可手动指定；没有安装 Codex 或尚未产生 `config.toml` 时，面板会明确显示未找到配置。内置角色清单按已核查的 Codex 0.155.1 定义，不宣称动态适配所有版本。
 
@@ -63,7 +97,35 @@ Codex 0.155.1 源码显示，已登记角色的文件会在创建新的子代理
 
 浏览器测试：安装 `requirements-dev.txt` 后，运行 `.venv\Scripts\python.exe -B -m tests.browser_check --browser "本机 Chromium 的完整路径"`；也可省略 `--browser` 使用已安装的 Playwright Chromium。验收截图：[桌面预览](docs/preview-desktop.png)、[窄屏预览](docs/preview-mobile.png)。
 
-## 参考资料
+## 自行构建发布包
+
+在 Windows x64、Python 3.11+ 环境执行：
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.venv\Scripts\python.exe scripts/build_release.py
+```
+
+输出位于 `dist/`：便携 ZIP 和 `SHA256SUMS.txt`。构建脚本仅打包程序、Web 资源及许可证，不包含 `.local`、个人配置、凭据或开发虚拟环境。
+
+便携包验证：`.venv\Scripts\python.exe -B -m tests.portable_check dist\codex-agent-manager-v0.1.0-windows-x64.zip`。测试在临时目录解压，使用模拟配置及本地模型服务，并在 PATH 不含 Python/Node.js 的条件下启动实际 EXE。
+
+## 常见问题
+
+**找不到配置目录？** 在“目录设置”中选择包含 `config.toml` 的文件夹。Orca 多账号或自定义目录可手动指定；不需要两种工具都安装。
+
+**模型不在下拉列表里？** 列表来自已有配置，不代表服务商全部模型。自定义角色可以直接输入任何模型 ID，再执行连接测试。
+
+**启动后没有打开页面？** 手动访问 `http://127.0.0.1:8765`，并检查解压目录 `.local/server-error.log`。端口被其他程序占用时可从终端执行 `CodexAgentManager.exe --port 8876`；退出对应实例使用 `CodexAgentManager.exe --port 8876 --stop`。
+
+**需要重启 Codex 吗？** 已登记角色的模型修改会在后续新建子代理时读取；已运行的子代理不会自动换模型。新增或删除角色、恢复内置默认建议重新加载 Codex 会话，详见下方参考文档。
+
+**可以在 macOS、Linux 或 WSL 使用吗？** 当前发布包仅支持 Windows x64，尚未适配其他平台。
+
+## 许可证与参考资料
+
+项目代码使用 [MIT License](LICENSE)。第三方组件及官方角色描述的许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 - [Codex 子代理](https://developers.openai.com/codex/subagents)：内置角色、独立 agents TOML、配置继承。
 - [Codex 配置参考](https://developers.openai.com/codex/config-reference)：agents config_file、模型服务商与认证字段。
