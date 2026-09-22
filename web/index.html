@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Codex Agent Manager</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Codex Agent Manager 首页"><span class="brand-symbol"><img src="/icons/layers.svg" alt=""></span><span>Codex<span class="brand-sub">AGENT MANAGER</span></span></a>
+    <div class="sidebar-caption">工作台 / WORKSPACE</div>
+    <button class="nav active" id="nav-agents"><img src="/icons/layers.svg" alt="">子代理配置<span id="nav-count">—</span></button>
+    <button class="nav" id="open-backups"><img src="/icons/rotate-ccw.svg" alt="">操作与恢复<img class="nav-arrow" src="/icons/arrow-up-right.svg" alt=""></button>
+    <div class="sidebar-note"><span class="tiny-label">YOUR TEAM. YOUR MODELS.</span><p>让每个角色，<br>用上合适的模型。</p><div class="orbital" aria-hidden="true"><span></span><span></span><span></span><i></i></div></div>
+    <div class="local-badge"><span class="status-dot"></span>本地运行<span>LOCAL ONLY</span></div>
+  </aside>
+  <main>
+    <header class="topbar"><span>工作台 <span class="slash">/</span> 子代理配置</span><span class="top-tag"><span class="status-dot"></span>CODEX CONFIGURATION</span></header>
+    <div class="content">
+      <section class="hero"><div><div class="eyebrow"><span>01</span> AGENT CONTROL ROOM</div><h1>配置你的<span>协作阵容。</span></h1><p>为每个子代理选择模型，让分工更清晰，让切换更简单。</p></div><button class="button dark" id="add-agent"><img src="/icons/plus.svg" alt="">新增子代理</button></section>
+      <section class="scope-panel" aria-label="配置范围">
+        <div class="scope-heading"><span class="overline">配置范围</span><span class="hint">所有操作仅作用于所选范围</span></div>
+        <div class="scope-tabs" role="group" aria-label="选择配置范围">
+          <button data-scope="native" aria-pressed="true"><img src="/icons/terminal.svg" alt=""><span>原生 Codex<small>个人配置目录</small></span><span class="scope-check"></span></button>
+          <button data-scope="orca" aria-pressed="false"><img src="/icons/layers.svg" alt=""><span>Orca 托管<small>Orca 运行时目录</small></span><span class="scope-check"></span></button>
+          <button data-scope="both" aria-pressed="false"><img src="/icons/copy.svg" alt=""><span>同时修改两套<small>分别验证 · 一起保存</small></span><span class="scope-check"></span></button>
+        </div>
+        <div id="scope-paths" class="scope-paths"></div>
+      </section>
+      <div id="global-errors" role="alert"></div>
+      <section class="roster-toolbar"><div><h2>子代理阵容 <span id="role-count">—</span></h2><p>官方角色与自定义角色，分别管理。</p></div><label class="search"><img src="/icons/search.svg" alt=""><input id="search" type="search" placeholder="搜索角色或模型" aria-label="搜索角色或模型"><kbd>/</kbd></label></section>
+      <div id="roster" aria-live="polite"><div class="empty">正在读取本地配置…</div></div>
+      <footer><span>文件保存后，请新开 Codex 会话使用最新配置。</span><span>CODEX AGENT MANAGER <span class="footer-version">/ 01</span></span></footer>
+    </div>
+  </main>
+  <dialog id="editor" aria-labelledby="editor-title">
+    <div class="dialog-header"><div><span class="overline" id="editor-type">CUSTOM AGENT</span><h2 id="editor-title">编辑子代理</h2></div><button class="icon-button" data-close="editor" aria-label="关闭编辑窗口"><img src="/icons/x.svg" alt=""></button></div>
+    <form id="editor-form">
+      <div class="dialog-body">
+        <div class="inline-info" id="editor-scope"></div>
+        <div class="field"><label for="agent-name">角色名称 <span>唯一标识</span></label><input id="agent-name" name="name" required pattern="[a-z][a-z0-9_-]{0,63}" placeholder="例如 reviewer" maxlength="64"><small>小写字母开头，可包含数字、下划线和连字符。</small></div>
+        <div id="builtin-note" class="notice" hidden>官方角色只允许 GPT 系列模型。恢复默认会移除本地覆盖，保留 Codex 内置角色。</div>
+        <div class="field"><label for="agent-model">模型 ID <span id="model-rule">不限厂商与模型类别</span></label><input id="agent-model" name="model" list="model-list" placeholder="输入或选择模型 ID" autocomplete="off"><datalist id="model-list"></datalist><small class="field-difference" data-difference="model"></small><small>留空继承目标 Codex 配置。保存前需要通过实际请求测试。</small></div>
+        <div class="form-columns"><div class="field"><label for="agent-effort">推理强度</label><select id="agent-effort" name="model_reasoning_effort"></select><small class="field-difference" data-difference="model_reasoning_effort"></small></div><div class="field custom-field"><label for="agent-sandbox">文件权限</label><select id="agent-sandbox" name="sandbox_mode"><option value="">继承 Codex 配置</option><option value="read-only">只读</option><option value="workspace-write">工作区可写</option><option value="danger-full-access">完全访问</option></select><small class="field-difference" data-difference="sandbox_mode"></small></div></div>
+        <div class="field custom-field"><label for="agent-description">职责描述</label><textarea id="agent-description" name="description" rows="2" placeholder="主代理据此决定何时使用这个角色"></textarea><small class="field-difference" data-difference="description"></small></div>
+        <div class="field custom-field"><label for="agent-instructions">角色提示词 <span>DEVELOPER INSTRUCTIONS</span></label><textarea id="agent-instructions" name="developer_instructions" rows="7" placeholder="描述角色职责、执行边界与输出要求"></textarea><small class="field-difference" data-difference="developer_instructions"></small></div>
+        <div id="editor-errors" class="form-error" role="alert"></div>
+      </div>
+      <div class="dialog-footer"><button class="button danger ghost" type="button" id="delete-agent"><img src="/icons/trash-2.svg" alt=""><span>删除角色</span></button><div><button class="button ghost" type="button" data-close="editor">取消</button><button class="button dark" type="submit">预览变更<img src="/icons/arrow-right.svg" alt=""></button></div></div>
+    </form>
+  </dialog>
+  <dialog id="preview" aria-labelledby="preview-title">
+    <div class="dialog-header"><div><span class="overline">REVIEW CHANGES</span><h2 id="preview-title">确认配置变更</h2></div><button class="icon-button" data-close="preview" aria-label="关闭变更预览"><img src="/icons/x.svg" alt=""></button></div>
+    <div class="dialog-body"><div id="preview-summary" class="inline-info"></div><div id="preview-diffs"></div><div id="test-section"><div class="test-heading"><div><strong>先确认模型可用</strong><p>向所选服务商发送最小请求，会产生少量 API 用量。</p></div><button class="button outline" id="test-model"><img src="/icons/zap.svg" alt="">测试连通性</button></div><div id="test-results" aria-live="polite"></div><p class="hint">连通成功仅验证文本生成，不代表已验证 Codex 工具调用兼容性。</p></div><label class="confirm-check"><input id="confirm-change" type="checkbox"><span id="confirm-label">我已确认上述文件及影响范围</span></label><div id="preview-errors" class="form-error" role="alert"></div></div>
+    <div class="dialog-footer"><span class="hint">保存前自动备份 · 支持恢复</span><div><button class="button ghost" data-close="preview">返回</button><button class="button dark" id="apply-change" disabled>确认保存</button></div></div>
+  </dialog>
+  <dialog id="backups" aria-labelledby="backups-title"><div class="dialog-header"><div><span class="overline">LOCAL HISTORY</span><h2 id="backups-title">操作与恢复</h2></div><button class="icon-button" data-close="backups" aria-label="关闭操作记录"><img src="/icons/x.svg" alt=""></button></div><div class="dialog-body"><p class="hint">每次操作保留本地备份。可恢复最近一次操作；若文件已被其他程序修改，将停止恢复。</p><div id="backup-list"></div></div></dialog>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>
