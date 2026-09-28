@@ -93,8 +93,9 @@ class Role:
 
 
 class Home:
-    def __init__(self, key, path):
+    def __init__(self, key, path, native_path=None):
         self.key, self.path = key, path
+        native_path = native_path.resolve() if native_path else None
         self.config_path = path / 'config.toml'
         self.config_bytes = read_bytes(self.config_path)
         if self.config_bytes is None:
@@ -110,7 +111,9 @@ class Home:
             try:
                 filename = entry.get('config_file')
                 target = (path / filename).resolve() if filename else None
-                if target and not target.is_relative_to(path.resolve()):
+                if target and not target.is_relative_to(path.resolve()) and not (
+                    key == 'orca' and native_path and target.is_relative_to(native_path)
+                ):
                     raise ConfigError(f'{name} 引用了配置目录之外的文件，暂不支持编辑')
                 raw = read_bytes(target) if target else None
                 if target in self.snapshots:
@@ -170,6 +173,7 @@ class Home:
         return {'name': role.name, 'builtin': role.name in BUILTINS,
                 'overridden': role.path is not None or role.registered,
                 'path': str(role.path) if role.path else None,
+                'shared': bool(role.path and not role.path.is_relative_to(self.path.resolve())),
                 'registered': role.registered,
                 'values': {k: str(role.doc.get(k, '')) for k in FIELDS},
                 'effective_model': effective.get('model', ''),

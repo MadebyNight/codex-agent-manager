@@ -34,9 +34,9 @@ class Settings:
         return Manager(self.homes, self.file.parent / 'backups', enabled=self.enabled)
 
     @staticmethod
-    def inspect(path, key):
+    def inspect(path, key, native_path=None):
         try:
-            home = Home(key, path)
+            home = Home(key, path, native_path if key == 'orca' else None)
             if home.errors:
                 return {'ok': False, 'message': '；'.join(home.errors)}
             return {'ok': True, 'message': f'已识别 {len(home.roles)} 个角色', 'roles': len(home.roles)}
@@ -46,13 +46,13 @@ class Settings:
     def state(self):
         return {'configured': self.configured, 'error': self.error,
                 'homes': {k: {'path': str(p), 'enabled': k in self.enabled,
-                              'detected_path': str(self.detected[k]), **self.inspect(p,k)}
+                              'detected_path': str(self.detected[k]), **self.inspect(p,k,self.homes['native'])}
                           for k,p in self.homes.items()}}
 
     def validate(self, body):
         if not isinstance(body.get('homes'), dict) or set(body['homes']) != {'native','orca'}:
             raise ConfigError('需要分别填写原生 Codex 与 Orca 的目录设置')
-        homes, enabled, checks = {}, [], {}
+        homes, enabled = {}, []
         for key, item in body['homes'].items():
             if not isinstance(item, dict) or not isinstance(item.get('path'), str) or not isinstance(item.get('enabled'), bool):
                 raise ConfigError('目录设置格式无效')
@@ -61,9 +61,9 @@ class Settings:
             if not raw or not path.is_absolute():
                 raise ConfigError('请输入配置目录的绝对路径，选择包含 config.toml 的文件夹')
             homes[key] = path.resolve()
-            checks[key] = self.inspect(homes[key], key)
             if item['enabled']:
                 enabled.append(key)
+        checks = {key: self.inspect(path, key, homes['native']) for key, path in homes.items()}
         if not enabled:
             raise ConfigError('请至少启用一套配置')
         if len(enabled) == 2:

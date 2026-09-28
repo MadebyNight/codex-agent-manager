@@ -56,6 +56,14 @@ class Fixture:
             self.manager.test(preview['id'])
         return self.manager.apply(preview['id'], True)
 
+    def share_builtin_with_orca(self, name):
+        if not (self.homes['native'] / 'agent-overrides' / f'{name}.toml').exists():
+            self.apply(self.request(scope='both', name=name))
+        path = self.homes['orca'] / 'config.toml'
+        doc = tomlkit.parse(path.read_text('utf-8'))
+        doc['agents'][name]['config_file'] = str(self.homes['native'] / 'agent-overrides' / f'{name}.toml')
+        path.write_text(tomlkit.dumps(doc), encoding='utf-8')
+
 
 class ManagerTests(unittest.TestCase):
     def setUp(self):
@@ -185,6 +193,72 @@ class ManagerTests(unittest.TestCase):
         self.assertFalse(home.roles['worker'].registered)
         self.assertIsNone(home.roles['worker'].path)
         self.assertNotIn('worker',home.config.get('agents',{}))
+
+    def test_orca_shared_builtin_does_not_block_new_custom_role(self):
+        for name in ('default', 'explorer', 'worker'):
+            self.f.apply(self.f.request(scope='both', name=name))
+        for name in ('default', 'explorer', 'worker'):
+            self.f.share_builtin_with_orca(name)
+        state = self.m.state()
+        self.assertFalse(state['homes']['orca']['errors'])
+        self.assertTrue(next(r for r in state['homes']['native']['roles'] if r['name'] == 'worker')['shared'])
+        self.assertTrue(next(r for r in state['homes']['orca']['roles'] if r['name'] == 'worker')['shared'])
+        settings = Settings(Path(self.temp.name) / 'settings.json', detected=self.f.homes)
+        self.assertTrue(settings.state()['homes']['orca']['ok'])
+        self.f.apply(self.f.request(scope='both', name='reviewer', create=True, patch={
+            'model': 'gpt-new', 'description': 'review', 'developer_instructions': 'Review changes.'}))
+        self.assertTrue(all((home / 'agents/reviewer.toml').is_file() for home in self.f.homes.values()))
+
+    def test_shared_builtin_is_written_once_and_can_be_restored(self):
+        self.f.share_builtin_with_orca('worker')
+        preview = self.m.preview(self.f.request(scope='both', name='worker', patch={'model': 'gpt-next'}))
+        self.assertEqual(len(preview['changes']), 1)
+        self.m.test(preview['id'])
+        result = self.m.apply(preview['id'], True)
+        path = self.f.homes['native'] / 'agent-overrides/worker.toml'
+        self.assertEqual(tomlkit.parse(path.read_text('utf-8'))['model'], 'gpt-next')
+        restore = self.m.restore_preview(result['backup_id'])
+        self.m.apply(restore['id'], True)
+        self.assertEqual(tomlkit.parse(path.read_text('utf-8'))['model'], 'gpt-new')
+
+    def test_shared_builtin_requires_both_scope(self):
+        self.f.share_builtin_with_orca('worker')
+        for scope in ('native', 'orca'):
+            with self.subTest(scope=scope), self.assertRaisesRegex(ConfigError, '同时修改两套'):
+                self.m.preview(self.f.request(scope=scope, name='worker'))
+
+    def test_shared_builtin_delete_removes_one_file_and_both_declarations(self):
+        self.f.share_builtin_with_orca('worker')
+        preview = self.m.preview(self.f.request(scope='both', name='worker', operation='delete', patch={}))
+        self.assertEqual(len(preview['changes']), 3)
+        result = self.m.apply(preview['id'], True)
+        self.assertFalse((self.f.homes['native'] / 'agent-overrides/worker.toml').exists())
+        for home in self.f.homes.values():
+            self.assertNotIn('worker', tomlkit.parse((home / 'config.toml').read_text('utf-8')).get('agents', {}))
+        restore = self.m.restore_preview(result['backup_id'])
+        self.m.apply(restore['id'], True)
+        self.assertTrue((self.f.homes['native'] / 'agent-overrides/worker.toml').is_file())
+
+    def test_shared_file_used_by_different_roles_is_blocked(self):
+        self.f.share_builtin_with_orca('worker')
+        path = self.f.homes['orca'] / 'config.toml'
+        doc = tomlkit.parse(path.read_text('utf-8'))
+        doc['agents']['worker']['config_file'] = 'agent-overrides/worker.toml'
+        doc['agents']['shadow'] = {'config_file': str(self.f.homes['native'] / 'agent-overrides/worker.toml')}
+        path.write_text(tomlkit.dumps(doc), encoding='utf-8')
+        with self.assertRaisesRegex(ConfigError, '不同角色'):
+            self.m.preview(self.f.request(scope='both', name='worker'))
+
+    def test_orca_reference_outside_both_homes_stays_blocked(self):
+        outside = Path(self.temp.name) / 'outside.toml'
+        outside.write_text('model="gpt-old"\n', encoding='utf-8')
+        path = self.f.homes['orca'] / 'config.toml'
+        path.write_text(path.read_text('utf-8') +
+                        f'\n[agents.worker]\nconfig_file = "{outside.as_posix()}"\n', encoding='utf-8')
+        self.assertTrue(self.m.state()['homes']['orca']['errors'])
+        with self.assertRaisesRegex(ConfigError, '配置目录之外'):
+            self.m.preview(self.f.request(scope='both', name='reviewer', create=True, patch={
+                'model': 'gpt-new', 'description': 'review', 'developer_instructions': 'Review changes.'}))
 
     def test_existing_builtin_non_gpt_retained_until_edit(self):
         path=self.f.role('native','explorer','gemini-existing')

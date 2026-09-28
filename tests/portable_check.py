@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import Request, urlopen
 import zipfile
 
+from app import __version__
 from .test_manager import Fixture
 
 
@@ -54,7 +55,7 @@ def main():
                 if process.poll() is not None:
                     raise AssertionError((exe.parent/'.local/server-error.log').read_text('utf-8'))
                 try:
-                    if api('health')['version']=='0.1.0':return process
+                    if api('health')['version']==__version__:return process
                 except OSError:pass
                 time.sleep(.1)
             process.terminate();process.wait();raise AssertionError('Portable startup timed out')
@@ -74,18 +75,27 @@ def main():
             api('apply',{'id':plan['id'],'confirmed':True})
             assert len(requests)==2
             assert all('any-vendor/portable-tested' in (p/'agents/coder.toml').read_text('utf-8') for p in fixture.homes.values())
+            fixture.share_builtin_with_orca('worker')
+            state=api('state')
+            assert not state['homes']['orca']['errors']
+            plan=api('preview',{'scope':'both','name':'reviewer','create':True,
+                                'patch':{'model':'gpt-new','description':'review','developer_instructions':'Review changes.'},
+                                'revisions':{k:h['revision'] for k,h in state['homes'].items()}})
+            assert api('test',{'id':plan['id']})['passed']
+            api('apply',{'id':plan['id'],'confirmed':True})
+            assert all((home/'agents/reviewer.toml').is_file() for home in fixture.homes.values())
             # Duplicate launch reuses the existing instance and exits.
             subprocess.run([str(exe),'--port',str(port),'--no-open'],env=env,timeout=15,check=True)
             subprocess.run([str(exe),'--port',str(port),'--stop','--no-open'],env=env,timeout=15,check=True)
             process.wait(timeout=15);assert process.returncode==0
             process=start()
             assert api('settings')['configured']
-            assert len(api('state')['backups'])==1
+            assert len(api('state')['backups'])==2
             api('shutdown',{});process.wait(timeout=15)
             assert process.returncode==0
             error_log=(exe.parent/'.local/server-error.log').read_text('utf-8')
             assert 'Traceback' not in error_log, error_log
-            print('Portable EXE passed: clean PATH, Unicode/spaces, static assets, both homes, settings persistence, actual local model probes, save, duplicate launch, stop, restart.')
+            print('Portable EXE passed: clean PATH, Unicode/spaces, static assets, both homes, shared Orca role references, settings persistence, actual local model probes, save, duplicate launch, stop, restart.')
         finally:
             if process and process.poll() is None:process.terminate();process.wait()
             provider.shutdown();provider.server_close();thread.join()

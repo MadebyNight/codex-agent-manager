@@ -4,6 +4,8 @@
 
 [下载 Windows 便携版](https://github.com/MadebyNight/codex-agent-manager/releases/latest) · [版本记录](https://github.com/MadebyNight/codex-agent-manager/releases) · [反馈问题](https://github.com/MadebyNight/codex-agent-manager/issues)
 
+Orca 共用角色文件问题的复测版本：[v0.1.1-rc.1 预发布版](https://github.com/MadebyNight/codex-agent-manager/releases/tag/v0.1.1-rc.1)。正式版仍为 v0.1.0。
+
 ![Codex Agent Manager 界面](docs/preview-desktop.png)
 
 ## 下载即用（Windows x64）
@@ -67,7 +69,7 @@ Windows 安装 Python 3.11+ 后，双击 **启动面板.cmd**。首次启动在�
 - 单文件原子替换；双套写入失败回滚。每次先备份，支持恢复最近一次操作。页面打开后文件被外部修改，保存会拒绝覆盖。
 - 自定义 TOML 保留未知字段、注释和换行风格。已有 `[agents.<name>].config_file` 声明可读取与编辑；新增官方角色覆盖通过此机制保存模型与推理参数，不使用空提示词覆盖继承指令。
 
-仅管理用户级 Codex 配置。不修改业务仓库、MCP、Skills、主模型或服务商配置；创建/移除官方覆盖时只修改主配置中的对应 `[agents.<name>]` 声明。暂不编辑目录外的 config_file 引用、共享链接或存在重复/损坏定义的配置。
+仅管理用户级 Codex 配置。不修改业务仓库、MCP、Skills、主模型或服务商配置；创建/移除官方覆盖时只修改主配置中的对应 `[agents.<name>]` 声明。Orca 角色引用所选原生 Codex 目录中的同一文件时，可在“同时修改两套”范围编辑，文件只写入和备份一次；单独修改该角色会被阻止，新增其他角色不受影响。其他目录外的 config_file 引用、共享链接或存在重复/损坏定义的配置仍不支持编辑。
 
 ## 连通性测试
 
@@ -109,7 +111,7 @@ python -m venv .venv
 
 输出位于 `dist/`：便携 ZIP 和 `SHA256SUMS.txt`。构建脚本仅打包程序、Web 资源及许可证，不包含 `.local`、个人配置、凭据或开发虚拟环境。
 
-便携包验证：`.venv\Scripts\python.exe -B -m tests.portable_check dist\codex-agent-manager-v0.1.0-windows-x64.zip`。测试在临时目录解压，使用模拟配置及本地模型服务，并在 PATH 不含 Python/Node.js 的条件下启动实际 EXE。
+便携包验证：`.venv\Scripts\python.exe -B -m tests.portable_check dist\codex-agent-manager-v0.1.1-rc.1-windows-x64.zip`。测试在临时目录解压，使用模拟配置及本地模型服务，并在 PATH 不含 Python/Node.js 的条件下启动实际 EXE。
 
 ## 常见问题
 

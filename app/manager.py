@@ -61,7 +61,7 @@ class Manager:
         raise ConfigError('请选择原生 Codex、Orca 或同时修改两套')
 
     def load(self, key):
-        return Home(key, self.homes[key])
+        return Home(key, self.homes[key], self.homes['native'] if key == 'orca' else None)
 
     def backups(self):
         result = []
@@ -89,6 +89,10 @@ class Manager:
                                             'errors': home.errors, 'revision': home.fingerprint(), 'enabled': True}
                 except (ConfigError, OSError) as exc:
                     result['homes'][key] = {'path': str(path), 'roles': [], 'errors': [str(exc) if isinstance(exc, ConfigError) else '目录无法读取，请检查路径和权限'], 'revision': None, 'enabled': True}
+            native_roles = {Path(r['path']): r for r in result['homes']['native']['roles'] if r['path']}
+            for role in result['homes']['orca']['roles']:
+                if role['shared'] and Path(role['path']) in native_roles:
+                    native_roles[Path(role['path'])]['shared'] = True
             models = {r['effective_model'] for h in result['homes'].values() for r in h['roles'] if r['effective_model']}
             result['models'] = sorted(models)
             result['efforts'] = list(EFFORTS)
@@ -133,6 +137,25 @@ class Manager:
                 raise ConfigError('此名称是 Windows 保留文件名，请换一个角色名称')
             keys = self.targets(scope)
             homes = self.check_homes(keys)
+            if scope != 'both':
+                home = homes[scope]
+                role = home.roles.get(name)
+                if role and role.path:
+                    shared = scope == 'orca' and not role.path.is_relative_to(home.path)
+                    if scope == 'native':
+                        try:
+                            shared = any(peer.path == role.path for peer in self.load('orca').roles.values())
+                        except (ConfigError, OSError):
+                            pass
+                    if shared:
+                        raise ConfigError('此角色由原生 Codex 与 Orca 共用文件，请选择同时修改两套')
+            else:
+                native_role = homes['native'].roles.get(name)
+                if native_role and native_role.path and any(
+                    peer.name != name and peer.path == native_role.path
+                    for peer in homes['orca'].roles.values()
+                ):
+                    raise ConfigError('两套配置把同一文件用于不同角色，无法同时修改')
             patch = request.get('patch', {})
             if not isinstance(patch, dict) or any(k not in FIELDS or not isinstance(v, str) for k, v in patch.items()):
                 raise ConfigError('包含不支持的编辑字段')
@@ -162,8 +185,12 @@ class Manager:
                 root_changed = False
                 target = role.path if role else None
                 registered = role.registered if role else False
+                shared = bool(target and key == 'orca' and not target.is_relative_to(home.path))
+                native_role = homes['native'].roles.get(name) if shared and scope == 'both' else None
+                if shared and (not native_role or native_role.path != target):
+                    raise ConfigError('Orca 的角色文件与原生配置不一致，无法同时修改')
                 if operation == 'delete':
-                    if target:
+                    if target and not shared:
                         changes.append(self.change(key, target, None))
                     if registered:
                         del root['agents'][name]
@@ -208,7 +235,8 @@ class Manager:
                     if not model:
                         raise ConfigError('必须配置可供测试的模型')
                     effective[key] = current
-                    changes.append(self.change(key, target, encode(doc, read_bytes(target))))
+                    if not shared:
+                        changes.append(self.change(key, target, encode(doc, read_bytes(target))))
                 if root_changed:
                     changes.append(self.change(key, home.config_path, encode(root, home.config_bytes)))
             changes = [c for c in changes if c['before'] != c['after']]
