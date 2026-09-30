@@ -18,9 +18,14 @@ from .test_manager import Fixture
 
 def main():
     archive=Path(sys.argv[1]).resolve()
-    requests=[]
+    requests=[];model_requests=[]
     class Provider(BaseHTTPRequestHandler):
         def log_message(self,*_):pass
+        def do_GET(self):
+            model_requests.append((self.path,self.headers.get('Authorization')))
+            self.send_response(200);self.end_headers()
+            self.wfile.write(json.dumps({'data':[{'id':'gpt-portable',
+                'supported_reasoning_levels':[{'effort':'low'},{'effort':'high'}]}]}).encode())
         def do_POST(self):
             requests.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
             self.send_response(200);self.end_headers()
@@ -68,6 +73,10 @@ def main():
             homes={k:{'path':str(p),'enabled':True} for k,p in fixture.homes.items()}
             assert api('settings/check',{'homes':homes})['valid']
             api('settings/save',{'homes':homes})
+            catalog=api('catalog')['homes']
+            assert all(catalog[k]['models']==['gpt-portable'] for k in homes)
+            assert all(catalog[k]['efforts']['gpt-portable']==['low','high'] for k in homes)
+            assert len(model_requests)==2 and all(path=='/v1/models' and auth=='Bearer private-fixture-token' for path,auth in model_requests)
             state=api('state')
             plan=api('preview',{'scope':'both','name':'coder','patch':{'model':'any-vendor/portable-tested'},
                                'revisions':{k:h['revision'] for k,h in state['homes'].items()}})
@@ -95,7 +104,7 @@ def main():
             assert process.returncode==0
             error_log=(exe.parent/'.local/server-error.log').read_text('utf-8')
             assert 'Traceback' not in error_log, error_log
-            print('Portable EXE passed: clean PATH, Unicode/spaces, static assets, both homes, shared Orca role references, settings persistence, actual local model probes, save, duplicate launch, stop, restart.')
+            print('Portable EXE passed: clean PATH, Unicode/spaces, static assets, both homes, service model catalogs and reasoning levels, shared Orca role references, settings persistence, actual local model probes, save, duplicate launch, stop, restart.')
         finally:
             if process and process.poll() is None:process.terminate();process.wait()
             provider.shutdown();provider.server_close();thread.join()

@@ -4,13 +4,13 @@
 
 [下载 Windows 便携版](https://github.com/MadebyNight/codex-agent-manager/releases/latest) · [版本记录](https://github.com/MadebyNight/codex-agent-manager/releases) · [反馈问题](https://github.com/MadebyNight/codex-agent-manager/issues)
 
-Orca 共用角色文件问题的复测版本：[v0.1.1-rc.1 预发布版](https://github.com/MadebyNight/codex-agent-manager/releases/tag/v0.1.1-rc.1)。正式版仍为 v0.1.0。
+当前源码版本为 **v0.1.1**，包含 Orca 共用角色文件修复和服务商模型列表读取。更新内容见 [版本说明](docs/releases/v0.1.1.md)；已发布的安装包以 [Releases](https://github.com/MadebyNight/codex-agent-manager/releases) 页面为准。
 
 ![Codex Agent Manager 界面](docs/preview-desktop.png)
 
 ## 下载即用（Windows x64）
 
-1. 打开 [Releases](https://github.com/MadebyNight/codex-agent-manager/releases/latest)，下载 **`codex-agent-manager-v0.1.0-windows-x64.zip`**，不要下载 GitHub 自动生成的 Source code 包。
+1. 打开 [Releases](https://github.com/MadebyNight/codex-agent-manager/releases/latest)，下载该版本的 **`codex-agent-manager-v*-windows-x64.zip`**，不要下载 GitHub 自动生成的 Source code 包。
 2. **完整解压**到可写目录，保留 `_internal` 文件夹，双击 **`CodexAgentManager.exe`**。
 3. 浏览器自动打开 `http://127.0.0.1:8765`。确认 Codex 配置目录，未安装的一套取消启用，然后点击“保存并使用”。
 4. 点击角色 → 选择或输入模型 → 预览变更 → 测试连通性 → 确认保存。
@@ -111,7 +111,7 @@ python -m venv .venv
 
 输出位于 `dist/`：便携 ZIP 和 `SHA256SUMS.txt`。构建脚本仅打包程序、Web 资源及许可证，不包含 `.local`、个人配置、凭据或开发虚拟环境。
 
-便携包验证：`.venv\Scripts\python.exe -B -m tests.portable_check dist\codex-agent-manager-v0.1.1-rc.1-windows-x64.zip`。测试在临时目录解压，使用模拟配置及本地模型服务，并在 PATH 不含 Python/Node.js 的条件下启动实际 EXE。
+便携包验证：`.venv\Scripts\python.exe -B -m tests.portable_check dist\codex-agent-manager-v0.1.1-windows-x64.zip`。测试在临时目录解压，使用模拟配置及本地模型服务，并在 PATH 不含 Python/Node.js 的条件下启动实际 EXE。
 
 ## 常见问题
 
