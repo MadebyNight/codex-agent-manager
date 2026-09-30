@@ -33,6 +33,10 @@ def main():
     requests=[]
     class Provider(BaseHTTPRequestHandler):
         def log_message(self,*_):pass
+        def do_GET(self):
+            self.send_response(200);self.end_headers()
+            self.wfile.write(json.dumps({'data':[{'id':'gpt-api-new',
+                'supported_reasoning_levels':[{'effort':'low'},{'effort':'high'}]}]}).encode())
         def do_POST(self):
             requests.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
             self.send_response(200);self.end_headers()
@@ -84,14 +88,19 @@ def main():
             # A populated input must still expose every known model on click.
             page.locator('[data-role="coder"]').click()
             page.locator('#agent-model').click()
-            expect(page.locator('#model-list [role=option]')).to_have_count(3)
+            expect(page.locator('#model-list [role=option]')).to_have_count(4)
+            page.get_by_role('option',name='gpt-api-new',exact=True).click()
+            expect(page.locator('#agent-model')).to_have_value('gpt-api-new')
+            expect(page.locator('#agent-effort option')).to_have_count(3)
+            page.locator('#model-toggle').click()
             page.get_by_role('option',name='gemini-example',exact=True).click()
             expect(page.locator('#agent-model')).to_have_value('gemini-example')
             expect(page.locator('#model-list')).to_be_hidden()
             page.locator('#model-toggle').click()
-            expect(page.locator('#model-list [role=option]')).to_have_count(3)
+            expect(page.locator('#model-list [role=option]')).to_have_count(4)
             page.locator('#agent-model').fill('gpt-')
-            expect(page.locator('#model-list [role=option]')).to_have_count(2)
+            expect(page.locator('#model-list [role=option]')).to_have_count(3)
+            page.locator('#agent-model').press('ArrowDown')
             page.locator('#agent-model').press('ArrowDown')
             page.locator('#agent-model').press('Enter')
             expect(page.locator('#agent-model')).to_have_value('gpt-old')
@@ -108,7 +117,7 @@ def main():
             page.locator('#editor [data-close="editor"]').first.click()
             page.locator('[data-role="worker"]').click()
             page.locator('#model-toggle').click()
-            expect(page.locator('#model-list [role=option]')).to_have_count(2)
+            expect(page.locator('#model-list [role=option]')).to_have_count(3)
             expect(page.get_by_role('option',name='gemini-example',exact=True)).to_have_count(0)
             page.locator('#editor [data-close="editor"]').first.click()
             page.locator('[data-scope="both"]').click()

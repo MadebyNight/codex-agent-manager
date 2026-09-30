@@ -13,7 +13,7 @@ from unittest.mock import patch
 import tomlkit
 
 from app.config import ConfigError, Home, default_homes
-from app.connectivity import connection, probe
+from app.connectivity import connection, list_models, probe
 from app.manager import Manager, atomic_write
 from app.server import make_server
 from app.settings import Settings
@@ -435,10 +435,15 @@ class ProbeTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.f=Fixture(self.temp.name)
         self.payload={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':'OK'}]}]}
-        self.status=200;self.received=[]
+        self.models_payload={'data':[{'id':'gpt-from-api','supported_reasoning_levels':[{'effort':'low'},{'effort':'high'}]},
+                                     {'id':'gpt-hidden','visibility':'hide'},{'id':'','description':'ignored'}]}
+        self.status=200;self.received=[];self.model_requests=[]
         parent=self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self,*_):pass
+            def do_GET(self):
+                parent.model_requests.append((self.path,dict(self.headers)))
+                self.send_response(parent.status);self.end_headers();self.wfile.write(json.dumps(parent.models_payload).encode())
             def do_POST(self):
                 parent.received.append((self.path,json.loads(self.rfile.read(int(self.headers['Content-Length']))),dict(self.headers)))
                 self.send_response(parent.status);self.end_headers();self.wfile.write(json.dumps(parent.payload).encode())
@@ -457,6 +462,16 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(path,'/v1/responses')
         self.assertEqual(body['reasoning'],{'effort':'high'})
         self.assertEqual(headers['Authorization'],'Bearer private-fixture-token')
+
+    def test_models_are_requested_from_configured_provider_with_efforts(self):
+        (self.home.path/'models_cache.json').write_text('{invalid',encoding='utf-8')
+        result=list_models(self.home,self.config)
+        self.assertEqual(result,{'models':['gpt-from-api'],'efforts':{'gpt-from-api':['low','high']}})
+        path,headers=self.model_requests[0]
+        self.assertEqual(path,'/v1/models')
+        self.assertEqual(headers['Authorization'],'Bearer private-fixture-token')
+        self.models_payload={'data':[{'id':'gpt-from-api'}]}
+        self.assertEqual(list_models(self.home,self.config)['efforts'],{})
 
     def test_http_200_empty_output_not_success(self):
         self.payload={'status':'completed','output':[]}

@@ -10,6 +10,7 @@ const editable = ['model','model_reasoning_effort','sandbox_mode','description',
 let state, scope = localStorage.getItem('codex-manager-scope') || 'native', editing, plan, tested = false, toastTimer;
 let modelSuggestions = [], visibleModels = [], activeModel = -1;
 let directorySettings;
+let catalogHomes = {}, catalogLoading = false, catalogGeneration = 0;
 if (!labels[scope]) scope = 'native';
 
 async function api(path, body) {
@@ -20,11 +21,35 @@ async function api(path, body) {
 }
 function keys() { return scope === 'both' ? ['native','orca'] : [scope]; }
 function toast(message) { $('#toast').textContent = message; $('#toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').hidden = true, 5500); }
-async function reload() {
+async function reload(loadCatalog = true) {
+  const generation = ++catalogGeneration;
+  catalogHomes = {}; catalogLoading = loadCatalog;
   state = await api('state');
   const enabled = Object.keys(state.homes).filter(k => state.homes[k].enabled !== false);
   if ((scope === 'both' && enabled.length !== 2) || (scope !== 'both' && !enabled.includes(scope))) scope = enabled[0] || 'native';
   render();
+  if (loadCatalog) refreshCatalog(generation);
+}
+async function refreshCatalog(generation) {
+  catalogLoading = true;
+  try {
+    const result = await api('catalog');
+    if (generation !== catalogGeneration) return;
+    catalogHomes = result.homes || {};
+  } catch (e) {
+    if (generation !== catalogGeneration) return;
+    catalogHomes = {};
+  } finally {
+    if (generation === catalogGeneration) {
+      catalogLoading = false;
+      if ($('#editor').open) {
+        updateModelSuggestions();
+        updateEffortOptions();
+        updateModelSource();
+        if (!$('#model-list').hidden) openModels($('#agent-model').value);
+      }
+    }
+  }
 }
 function mergedRoles() {
   const roles = new Map();
@@ -78,13 +103,15 @@ function openEditor(name) {
   $('#editor-form').reset();
   $('#agent-name').value = name || '';
   $('#agent-name').disabled = Boolean(name);
-  $('#agent-effort').innerHTML = state.efforts.map(v => `<option value="${esc(v)}">${v || '继承 Codex 配置'}</option>`).join('');
+  $('#agent-effort').innerHTML = '';
   for (const field of editable) {
     const input = $(`[name="${field}"]`);
     input.value = editing.original[field] || '';
     input.required = !builtin && ['description','developer_instructions'].includes(field);
   }
-  modelSuggestions = state.models.filter(m => !builtin || m.toLowerCase().startsWith('gpt-'));
+  updateModelSuggestions();
+  updateEffortOptions(true);
+  updateModelSource();
   closeModels();
   $('#model-rule').textContent = builtin ? '仅限 GPT 系列' : '不限厂商与模型类别';
   $('#builtin-note').hidden = !builtin;
@@ -99,6 +126,29 @@ function openEditor(name) {
   }
   $('#editor-errors').textContent = '';
   $('#editor').showModal();
+}
+function updateModelSuggestions() {
+  const models = new Set(keys().flatMap(k => [
+    ...state.homes[k].roles.map(r => r.effective_model).filter(Boolean),
+    ...(catalogHomes[k]?.models || [])
+  ]));
+  modelSuggestions = [...models].filter(m => !editing.builtin || m.toLowerCase().startsWith('gpt-')).sort();
+}
+function updateModelSource() {
+  const errors = keys().map(k => catalogHomes[k]?.error).filter(Boolean);
+  $('#model-source').textContent = catalogLoading ? '正在读取服务商模型列表…' : errors.length ?
+    `服务商模型列表未能加载：${errors.join('；')}。可直接输入模型 ID。` :
+    keys().some(k => catalogHomes[k]?.models?.length) ? '模型列表已从所选服务商获取。' : '服务商未返回模型；可直接输入模型 ID。';
+}
+function updateEffortOptions(initial = false) {
+  const model = $('#agent-model').value.trim();
+  const selected = initial ? editing.original.model_reasoning_effort || '' : $('#agent-effort').value;
+  const known = keys().map(k => catalogHomes[k]?.efforts?.[model]).filter(Boolean);
+  const allowed = known.length ? known.reduce((shared, levels) => shared.filter(v => levels.includes(v)), known[0]) : state.efforts.filter(Boolean);
+  const options = ['', ...allowed];
+  if (selected && !options.includes(selected) && model === (editing.original.model || '')) options.push(selected);
+  $('#agent-effort').innerHTML = options.map(v => `<option value="${esc(v)}">${v || '继承 Codex 配置'}</option>`).join('');
+  $('#agent-effort').value = options.includes(selected) ? selected : '';
 }
 async function buildPreview(operation) {
   const name = $('#agent-name').value.trim();
@@ -134,7 +184,7 @@ function closeModels() {
 function openModels(query = '') {
   visibleModels = modelSuggestions.filter(m => m.toLowerCase().includes(query.toLowerCase()));
   activeModel = -1;
-  $('#model-list').innerHTML = visibleModels.map((m,i) => `<div id="model-option-${i}" role="option" aria-selected="false" data-model-index="${i}"><span>${esc(m)}</span>${m === $('#agent-model').value ? icon('check') : ''}</div>`).join('') || '<div class="model-empty">没有匹配的已知模型，可直接使用输入的模型 ID。</div>';
+  $('#model-list').innerHTML = visibleModels.map((m,i) => `<div id="model-option-${i}" role="option" aria-selected="false" data-model-index="${i}"><span>${esc(m)}</span>${m === $('#agent-model').value ? icon('check') : ''}</div>`).join('') || `<div class="model-empty">${catalogLoading ? '正在从服务商获取模型列表…' : '没有匹配的服务商模型，可直接输入模型 ID。'}</div>`;
   $('#model-list').hidden = false;
   $('#agent-model').setAttribute('aria-expanded','true');
   $('#agent-model').removeAttribute('aria-activedescendant');
@@ -143,11 +193,12 @@ function openModels(query = '') {
 }
 function chooseModel(index) {
   $('#agent-model').value = visibleModels[index];
+  updateEffortOptions();
   $('#agent-model').focus();
   closeModels();
 }
 $('#agent-model').addEventListener('click',() => openModels());
-$('#agent-model').addEventListener('input',() => openModels($('#agent-model').value));
+$('#agent-model').addEventListener('input',() => { updateEffortOptions(); openModels($('#agent-model').value); });
 $('#model-toggle').addEventListener('click',() => {
   const wasClosed = $('#model-list').hidden;
   $('#agent-model').focus();
@@ -244,4 +295,4 @@ $('#open-backups').addEventListener('click',async()=>{try{await reload();renderB
 $('#backup-list').addEventListener('click',async e=>{const button=e.target.closest('[data-restore]');if(!button)return;button.disabled=true;try{showPreview(await api('restore-preview',{id:button.dataset.restore}));}catch(err){toast(err.message);}finally{button.disabled=false;}});
 $('#nav-agents').addEventListener('click',async()=>{try{await reload();toast('已重新读取配置');}catch(e){toast(e.message);}});
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!$('dialog[open]')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();$('#search').focus();}});
-reload().then(async () => {const settings=await api('settings');if(!settings.configured)await openDirectories();}).catch(e=>{$('#roster').innerHTML=`<div class="error-banner">无法读取配置：${esc(e.message)}。请确认本地服务正在运行。</div>`;$('#add-agent').disabled=true;});
+reload(false).then(async () => {const settings=await api('settings');if(!settings.configured)await openDirectories();else refreshCatalog(catalogGeneration);}).catch(e=>{$('#roster').innerHTML=`<div class="error-banner">无法读取配置：${esc(e.message)}。请确认本地服务正在运行。</div>`;$('#add-agent').disabled=true;});

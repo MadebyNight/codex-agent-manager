@@ -13,7 +13,7 @@ import tomlkit
 
 from .config import (BUILTINS, EFFORTS, FIELDS, NAME, RESERVED_NAMES, SANDBOXES, ConfigError, Home,
                      digest, encode, parse, read_bytes)
-from .connectivity import connection, probe
+from .connectivity import connection, list_models, probe
 
 
 def atomic_write(path, data):
@@ -97,6 +97,22 @@ class Manager:
             result['models'] = sorted(models)
             result['efforts'] = list(EFFORTS)
             return result
+
+    def catalog(self):
+        result = {'homes': {}}
+        with self.lock:
+            homes = {}
+            for key in self.enabled:
+                try:
+                    homes[key] = self.load(key)
+                except (ConfigError, OSError) as exc:
+                    result['homes'][key] = {'models': [], 'efforts': {}, 'error': str(exc) if isinstance(exc, ConfigError) else '配置目录无法读取'}
+        for key, home in homes.items():
+            try:
+                result['homes'][key] = list_models(home, home.effective({}))
+            except (ConfigError, OSError) as exc:
+                result['homes'][key] = {'models': [], 'efforts': {}, 'error': str(exc) if isinstance(exc, ConfigError) else '配置目录无法读取'}
+        return result
 
     def matches_homes(self, item):
         if 'homes' in item:

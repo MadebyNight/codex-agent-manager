@@ -33,13 +33,15 @@ def make_server(manager, port=8765, settings=None):
             self.end_headers()
             try:
                 self.wfile.write(data)
-            except (BrokenPipeError, ConnectionResetError):
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass
 
         def do_GET(self):
             path = urlsplit(self.path).path
             if path == '/api/state':
                 return self.reply(200, manager.state())
+            if path == '/api/catalog':
+                return self.reply(200, manager.catalog())
             if path == '/api/health':
                 return self.reply(200, {'app': 'codex-agent-manager', 'version': __version__})
             if path == '/api/settings':

@@ -7,10 +7,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from .config import ConfigError
+from .config import ConfigError, EFFORTS
 
 
-def connection(home, effective):
+def provider_connection(home, effective):
     provider_id = effective.get('model_provider', 'openai')
     provider = effective.get('model_providers', {}).get(provider_id, {})
     if provider_id != 'openai' and not provider:
@@ -45,8 +45,13 @@ def connection(home, effective):
     if token:
         headers['Authorization'] = f'Bearer {token}'
     headers['Content-Type'] = 'application/json'
-    url = base.rstrip('/') + '/responses'
     query = provider.get('query_params', {})
+    return base.rstrip('/'), headers, query
+
+
+def connection(home, effective):
+    base, headers, query = provider_connection(home, effective)
+    url = base + '/responses'
     if query:
         url += '?' + urllib.parse.urlencode(query)
     model = effective.get('model', '')
@@ -58,6 +63,40 @@ def connection(home, effective):
         body['reasoning'] = {'effort': effective['model_reasoning_effort']}
     fingerprint = hashlib.sha256(json.dumps([url, headers, body], sort_keys=True).encode()).hexdigest()
     return url, headers, body, fingerprint
+
+
+def list_models(home, effective):
+    base, headers, query = provider_connection(home, effective)
+    url = base + '/models'
+    if query:
+        url += '?' + urllib.parse.urlencode(query)
+    request = urllib.request.Request(url, headers=headers, method='GET')
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            payload = json.loads(response.read(2_000_001))
+    except urllib.error.HTTPError as exc:
+        code = exc.code
+        exc.close()
+        raise ConfigError(f'获取模型列表失败（HTTP {code}）') from None
+    except (OSError, ValueError, urllib.error.URLError):
+        raise ConfigError('获取模型列表失败，请检查服务商地址、网络和 Models API 支持情况') from None
+    if not isinstance(payload, dict) or not isinstance(payload.get('data'), list):
+        raise ConfigError('服务商未返回标准 Models API 列表')
+    models, efforts = set(), {}
+    for item in payload['data']:
+        if not isinstance(item, dict) or not isinstance(item.get('id'), str) or not item['id'].strip():
+            continue
+        if item.get('visibility') == 'hide':
+            continue
+        model = item['id'].strip()
+        models.add(model)
+        levels = item.get('supported_reasoning_levels')
+        if isinstance(levels, list):
+            supported = [level.get('effort') if isinstance(level, dict) else level for level in levels]
+            supported = [level for level in supported if isinstance(level, str) and level in EFFORTS and level]
+            if supported:
+                efforts[model] = list(dict.fromkeys(supported))
+    return {'models': sorted(models), 'efforts': efforts}
 
 
 def probe(home, effective):
