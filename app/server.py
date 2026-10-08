@@ -82,6 +82,10 @@ def make_server(manager, port=8765, settings=None):
                         raise ConfigError('目录设置接口不存在')
                 elif route == '/api/preview':
                     result = manager.preview(body)
+                elif route == '/api/verification/history':
+                    result = manager.verification_history(body['scope'], body['name'])
+                elif route == '/api/verification/run':
+                    result = manager.verify_role(body['scope'], body['name'])
                 elif route == '/api/test':
                     result = manager.test(body['id'])
                 elif route == '/api/apply':

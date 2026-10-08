@@ -11,6 +11,7 @@ let state, scope = localStorage.getItem('codex-manager-scope') || 'native', edit
 let modelSuggestions = [], visibleModels = [], activeModel = -1;
 let directorySettings;
 let catalogHomes = {}, catalogLoading = false, catalogGeneration = 0;
+let verificationTarget;
 if (!labels[scope]) scope = 'native';
 
 async function api(path, body) {
@@ -117,6 +118,7 @@ function openEditor(name) {
   $('#builtin-note').hidden = !builtin;
   $$('.custom-field').forEach(e => e.hidden = builtin);
   $('#delete-agent').hidden = !role || (builtin && !Object.values(role.variants).some(v => v.overridden));
+  $('#open-verification').disabled = !role || keys().some(k => !role.variants[k]);
   $('#delete-agent span').textContent = builtin ? '恢复内置默认' : '删除角色';
   $('#editor-scope').textContent = `作用范围：${labels[scope]}${scope==='both'?'\n仅同步修改过的字段；其余差异保留。':''}${role && keys().some(k => !role.variants[k])?'\n缺失的一套将使用当前表单创建角色，预览中会列出新文件。':''}`;
   for (const element of $$('[data-difference]')) {
@@ -276,6 +278,35 @@ $('#roster').addEventListener('click',e=>{const button=e.target.closest('[data-r
 $('#add-agent').addEventListener('click',()=>openEditor());
 $('#editor-form').addEventListener('submit',e=>{e.preventDefault();buildPreview('save');});
 $('#delete-agent').addEventListener('click',()=>buildPreview('delete'));
+const verificationStatus = {matched:'模型匹配',mismatch:'模型不符',stale:'配置已变更',unknown:'无法确认'};
+function verificationEntry(record) {
+  return `<div class="verification-entry ${record.status === 'mismatch' ? 'failed' : ''}"><strong>${esc(verificationStatus[record.status] || '无法确认')}</strong> · ${esc(record.role || '')} · ${esc(record.time || '')}<br>实际：${esc(record.model || '无独立回合记录')} ${esc(record.effort || '')}<br>当前配置：${esc(record.configured_model || '未配置')} ${esc(record.configured_effort || '')}${record.message ? `<br>${esc(record.message)}` : ''}</div>`;
+}
+async function refreshVerification() {
+  $('#verification-history').textContent = '正在读取调用记录…';
+  try {
+    const result = await api('verification/history',verificationTarget);
+    $('#verification-history').innerHTML = keys().map(k => `<section class="verification-home"><h3>${labels[k]}</h3>${(result.homes[k] || []).slice(0,8).map(verificationEntry).join('') || '<p class="hint">未找到该角色的子代理调用记录。</p>'}</section>`).join('');
+  } catch(e) { $('#verification-history').textContent = e.message; }
+}
+$('#open-verification').addEventListener('click',async()=>{
+  verificationTarget={scope,name:editing.role.name};
+  $('#verification-title').textContent=`调用验证 · ${editing.role.name}`;
+  $('#verification-results').textContent='';
+  $('#verification').showModal();
+  await refreshVerification();
+});
+$('#refresh-verification').addEventListener('click',refreshVerification);
+$('#run-verification').addEventListener('click',async()=>{
+  const button=$('#run-verification');button.disabled=true;
+  $('#verification-results').textContent='正在启动 Codex 并等待子代理完成；每套配置最多等待 3 分钟…';
+  try {
+    const result=await api('verification/run',verificationTarget);
+    $('#verification-results').innerHTML=keys().map(k=>`<section class="verification-home"><h3>${labels[k]}</h3>${verificationEntry(result.homes[k])}</section>`).join('');
+    await refreshVerification();
+  } catch(e) { $('#verification-results').textContent=e.message; }
+  finally {button.disabled=false;}
+});
 $('#confirm-change').addEventListener('change',updateApply);
 $$('[data-close]').forEach(b=>b.addEventListener('click',()=>$('#'+b.dataset.close).close()));
 $('#test-model').addEventListener('click',async()=>{

@@ -58,7 +58,7 @@
         <div class="field custom-field"><label for="agent-instructions">角色提示词 <span>DEVELOPER INSTRUCTIONS</span></label><textarea id="agent-instructions" name="developer_instructions" rows="7" placeholder="描述角色职责、执行边界与输出要求"></textarea><small class="field-difference" data-difference="developer_instructions"></small></div>
         <div id="editor-errors" class="form-error" role="alert"></div>
       </div>
-      <div class="dialog-footer"><button class="button danger ghost" type="button" id="delete-agent"><img src="/icons/trash-2.svg" alt=""><span>删除角色</span></button><div><button class="button ghost" type="button" data-close="editor">取消</button><button class="button dark" type="submit">预览变更<img src="/icons/arrow-right.svg" alt=""></button></div></div>
+      <div class="dialog-footer"><button class="button danger ghost" type="button" id="delete-agent"><img src="/icons/trash-2.svg" alt=""><span>删除角色</span></button><div><button class="button outline" type="button" id="open-verification">调用验证</button><button class="button ghost" type="button" data-close="editor">取消</button><button class="button dark" type="submit">预览变更<img src="/icons/arrow-right.svg" alt=""></button></div></div>
     </form>
   </dialog>
   <dialog id="preview" aria-labelledby="preview-title">
@@ -67,6 +67,7 @@
     <div class="dialog-footer"><span class="hint">保存前自动备份 · 支持恢复</span><div><button class="button ghost" data-close="preview">返回</button><button class="button dark" id="apply-change" disabled>确认保存</button></div></div>
   </dialog>
   <dialog id="backups" aria-labelledby="backups-title"><div class="dialog-header"><div><span class="overline">LOCAL HISTORY</span><h2 id="backups-title">操作与恢复</h2></div><button class="icon-button" data-close="backups" aria-label="关闭操作记录"><img src="/icons/x.svg" alt=""></button></div><div class="dialog-body"><p class="hint">每次操作保留本地备份。可恢复最近一次操作；若文件已被其他程序修改，将停止恢复。</p><div id="backup-list"></div></div></dialog>
+  <dialog id="verification" aria-labelledby="verification-title"><div class="dialog-header"><div><span class="overline">RUNTIME EVIDENCE</span><h2 id="verification-title">调用验证</h2></div><button class="icon-button" data-close="verification" aria-label="关闭调用验证"><img src="/icons/x.svg" alt=""></button></div><div class="dialog-body"><p class="hint">验证已保存的配置；编辑窗口中未保存的改动不参与。记录取自所选 Codex 目录的本机会话。主动验收会启动一个新的只读 Codex CLI 会话并产生模型用量；只有找到指定角色的模型响应记录才会报告匹配。Orca 范围验证的是它的配置目录，不代表 Orca 应用本身的调用行为。</p><div id="verification-results" aria-live="polite"></div><div id="verification-history" aria-live="polite"></div></div><div class="dialog-footer"><span class="hint">历史记录与当前配置比较；配置变更后的旧调用会单独标注。</span><div><button class="button outline" id="refresh-verification">刷新记录</button><button class="button dark" id="run-verification">主动验收</button></div></div></dialog>
   <div id="toast" role="status" hidden></div>
 </body>
 </html>

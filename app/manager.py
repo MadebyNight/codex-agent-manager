@@ -14,6 +14,7 @@ import tomlkit
 from .config import (BUILTINS, EFFORTS, FIELDS, NAME, RESERVED_NAMES, SANDBOXES, ConfigError, Home,
                      digest, encode, parse, read_bytes)
 from .connectivity import connection, list_models, probe
+from .verification import active_check, expected_role, history
 
 
 def atomic_write(path, data):
@@ -113,6 +114,18 @@ class Manager:
             except (ConfigError, OSError) as exc:
                 result['homes'][key] = {'models': [], 'efforts': {}, 'error': str(exc) if isinstance(exc, ConfigError) else '配置目录无法读取'}
         return result
+
+    def verification_history(self, scope, name):
+        with self.lock:
+            homes = {key: self.load(key) for key in self.targets(scope)}
+        return {'homes': {key: history(home, name) for key, home in homes.items()}}
+
+    def verify_role(self, scope, name):
+        with self.lock:
+            homes = {key: self.load(key) for key in self.targets(scope)}
+        for home in homes.values():
+            expected_role(home, name)
+        return {'homes': {key: active_check(home, name) for key, home in homes.items()}}
 
     def matches_homes(self, item):
         if 'homes' in item:
