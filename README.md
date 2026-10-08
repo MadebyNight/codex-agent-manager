@@ -4,7 +4,7 @@
 
 [下载 Windows 便携版](https://github.com/MadebyNight/codex-agent-manager/releases/latest) · [版本记录](https://github.com/MadebyNight/codex-agent-manager/releases) · [反馈问题](https://github.com/MadebyNight/codex-agent-manager/issues)
 
-当前源码版本为 **v0.1.1**，包含 Orca 共用角色文件修复和服务商模型列表读取。更新内容见 [版本说明](docs/releases/v0.1.1.md)；已发布的安装包以 [Releases](https://github.com/MadebyNight/codex-agent-manager/releases) 页面为准。
+当前版本为 **v0.1.1**，包含 Orca 共用角色文件修复、服务商模型列表读取及子代理调用验证。更新内容见 [版本说明](docs/releases/v0.1.1.md)。
 
 ![Codex Agent Manager 界面](docs/preview-desktop.png)
 
@@ -35,6 +35,7 @@
 - 自动识别配置目录，支持本机文件夹选择并记住设置。
 - 双套配置显示差异，只同步本次编辑字段，保留其他内容和 TOML 注释。
 - 保存前展示变更，自动备份；写入失败回滚，支持恢复最近一次操作。
+- 查看子代理实际调用记录，并可用 Codex CLI 主动验收角色和模型。
 
 这是独立社区工具，与 OpenAI、Orca 无隶属或官方背书关系。
 

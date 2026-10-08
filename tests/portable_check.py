@@ -73,6 +73,7 @@ def main():
             homes={k:{'path':str(p),'enabled':True} for k,p in fixture.homes.items()}
             assert api('settings/check',{'homes':homes})['valid']
             api('settings/save',{'homes':homes})
+            assert api('verification/history',{'scope':'native','name':'coder'})['homes']['native']==[]
             catalog=api('catalog')['homes']
             assert all(catalog[k]['models']==['gpt-portable'] for k in homes)
             assert all(catalog[k]['efforts']['gpt-portable']==['low','high'] for k in homes)
